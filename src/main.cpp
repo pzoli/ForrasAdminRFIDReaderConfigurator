@@ -1,9 +1,11 @@
 #include <Arduino.h>
 #include "EEpromWriteAnything.h"
-#include <Ethernet.h>
 #include <ArduinoJson.h>
+#include <IPAddress.h>
+
 JsonDocument doc;
 
+#define REQUEST_IN_CONFIG
 // #define DEBUG
 #define DHCP
 
@@ -18,26 +20,10 @@ struct NetConfig
   uint8_t gateway[4];
   uint8_t dnsserver[4];
   uint16_t serverport;
+#ifdef REQUEST_IN_CONFIG
+  char request[80];
+#endif
 } conf;
-
-void initEthernet()
-{
-#ifdef DHCP
-  if (conf.usedhcp == 1)
-  {
-    Serial.println(F("Ethernet configure useing DHCP"));
-    Ethernet.begin(conf.mac);
-    Ethernet.maintain();
-  }
-  else
-  {
-#endif
-    Serial.println(F("Ethernet configure using fix IP"));
-    Ethernet.begin(conf.mac, conf.ip, conf.dnsserver, conf.gateway, conf.subnet);
-#ifdef DHCP
-  }
-#endif
-}
 
 String getMACasString(uint8_t *mac)
 {
@@ -64,18 +50,6 @@ void setup()
   }
 #endif
   EEPROM_readAnything(1, conf);
-  bool configured = String(conf.state).startsWith("CONFIG");
-  if (configured)
-  {
-    initEthernet();
-  }
-  Serial.println(configured ? F("Configured") : F("Not confugured yet"));
-
-  if (configured)
-  {
-    Serial.print(F("reader ip: "));
-    Serial.println(Ethernet.localIP());
-  }
 }
 
 void getMACFromString(String mac, uint8_t *result)
@@ -142,6 +116,11 @@ void printConfigToSerial()
   printIPToSerial(F("subnet"), conf.subnet);
   Serial.print(",");
   printMACToSerial(F("mac"), conf.mac);
+#ifdef REQUEST_IN_CONFIG
+  Serial.print(F(",\"request\":\""));
+  Serial.print(String(conf.request));
+  Serial.print(F("\""));
+#endif
   Serial.println(F("}"));
 };
 
@@ -156,6 +135,9 @@ void updateConf()
   getIPFromString(doc[F("dnsserver")].as<String>(), conf.dnsserver);
   getMACFromString(doc[F("mac")].as<String>(), conf.mac);
   conf.serverport = doc[F("serverport")].as<int>();
+#ifdef REQUEST_IN_CONFIG
+  strcpy(conf.request, doc["request"].as<String>().c_str());
+#endif
 }
 
 String command = "";
@@ -209,6 +191,10 @@ void loop()
 
     Serial.print(F("mac:"));
     Serial.println(doc[F("mac")].as<String>());
+#ifdef REQUEST_IN_CONFIG
+    Serial.print(F("request:"));
+    Serial.println(doc[F("request")].as<String>());
+#endif
 #endif
     if (doc["action"].as<String>().equals(F("configure")))
     {
